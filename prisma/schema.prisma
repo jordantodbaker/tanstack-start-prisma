@@ -1,0 +1,18 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Changelog {
+  id        Int      @id @default(autoincrement())
+  projectId Int
+  cvrId     Int
+  description String
+  status      String
+  createdAt DateTime @default(now())
+  lastUpdated DateTime @default(now())
+}
