@@ -1,14 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { createServerFn } from "@tanstack/react-start";
+import { useServerFn, createServerFn } from "@tanstack/react-start";
 import { prisma } from "../db";
 import "../index.css";
-
+import { useState, useEffect } from "react";
 import {
   createColumn,
   createColumnHelper,
   flexRender,
   getCoreRowModel,
   useReactTable,
+  type Row,
 } from "@tanstack/react-table";
 import React from "react";
 
@@ -29,9 +30,98 @@ export const Route = createFileRoute("/")({
   },
 });
 
+async function toFreshRequest(request: Request) {
+  if (request.method === "GET" || request.method === "HEAD") return request;
+
+  const body = await request.arrayBuffer();
+  return new Request(request.url, {
+    method: request.method,
+    headers: request.headers,
+    body,
+  });
+}
+
+const TableCell = ({
+  getValue,
+  row,
+  column,
+  table,
+}: {
+  getValue: any;
+  row: Row<Changelog>;
+  column: any;
+  table: any;
+}) => {
+  const initialValue = getValue();
+  const [value, setValue] = useState(initialValue);
+  useEffect(() => {
+    setValue(initialValue);
+  }, [initialValue]);
+  const onBlur = () => {
+    table.options.meta?.updateData(row.index, column.id, value);
+  };
+  return (
+    <input
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={onBlur}
+    />
+  );
+};
+
+const TableDropdown = ({
+  getValue,
+  row,
+  column,
+  table,
+}: {
+  getValue: any;
+  row: Row<Changelog>;
+  column: any;
+  table: any;
+}) => {
+  const initialValue = getValue();
+  const [value, setValue] = useState(initialValue);
+
+  useEffect(() => {
+    setValue(initialValue);
+  }, [initialValue]);
+
+  const onBlur = () => {
+    table.options.meta?.updateData(row.index, column.id, value);
+  };
+
+  return (
+    <select onChange={(e) => setValue(e.target.value)} onBlur={onBlur}>
+      <option value="requested" selected={initialValue === "Requested"}>
+        Requested
+      </option>
+      <option value="pending" selected={initialValue === "Pending"}>
+        Pending
+      </option>
+      <option value="approved" selected={initialValue === "Approved"}>
+        Approved
+      </option>
+      <option value="denied" selected={initialValue === "Denied"}>
+        Denied
+      </option>
+      <option value="executed" selected={initialValue === "Executed"}>
+        Executed
+      </option>
+    </select>
+  );
+};
+
 const getChangelogs = createServerFn({ method: "GET" }).handler(async () => {
   return prisma.changelog.findMany();
 });
+
+const updateChangelogs = createServerFn({ method: "POST" })
+  .inputValidator((data: Changelog[]) => data)
+  .handler(async (data) => {
+    console.log("THE DATA: ", data);
+    //return prisma.changelog.updateMany({ data: data });
+  });
 
 const columnHelper = createColumnHelper<Changelog>();
 
@@ -54,10 +144,12 @@ const columns = [
   columnHelper.accessor("description", {
     header: () => <span>Description</span>,
     footer: (info) => info.column.id,
+    cell: TableCell,
   }),
   columnHelper.accessor("status", {
     header: "Status",
     footer: (info) => info.column.id,
+    cell: TableDropdown,
   }),
   columnHelper.accessor("createdAt", {
     header: "Created At",
@@ -87,7 +179,7 @@ function App() {
   const logs: Changelog[] = Route.useLoaderData();
   const [data, _setData] = React.useState(() => [...logs]);
 
-  console.log("LOGS", logs);
+  const updateData = useServerFn(updateChangelogs);
 
   const table = useReactTable({
     data,
@@ -98,8 +190,27 @@ function App() {
         return true;
       },
     },
+    meta: {
+      updateData: (
+        rowIndex: number,
+        columnId: string,
+        value: string | unknown,
+      ) => {
+        _setData((old) =>
+          old.map((row, index) => {
+            if (index === rowIndex) {
+              return {
+                ...old[rowIndex],
+                [columnId]: value,
+              };
+            }
+            return row;
+          }),
+        );
+      },
+    },
   });
-  console.log(logs);
+
   return (
     <main>
       <table>
@@ -147,6 +258,10 @@ function App() {
           ))}
         </tfoot>
       </table>
+      <button onClick={async () => await updateData({ data: data })}>
+        Submit{" "}
+      </button>
+      <button onClick={() => console.log(data)}>Submit </button>
     </main>
   );
 }
